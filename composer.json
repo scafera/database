@@ -1,0 +1,26 @@
+{
+    "name": "scafera/database",
+    "description": "Database persistence for the Scafera framework",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "scafera/kernel": "^1.0 || dev-main",
+        "doctrine/doctrine-bundle": "^3.0",
+        "doctrine/orm": "^3.0",
+        "doctrine/doctrine-migrations-bundle": "^4.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Scafera\\Database\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Scafera\\Database\\Tests\\": "tests/"
+        }
+    }
+}

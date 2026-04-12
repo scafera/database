@@ -1,0 +1,384 @@
+# scafera/database
+
+Database persistence for the Scafera framework. Wraps Doctrine ORM/DBAL internally — userland code never imports Doctrine types outside of entities and repositories.
+
+## Core Idea
+
+Scafera treats the database engine as an implementation detail. Your application code interacts with two classes — `EntityStore` for reads and writes, `Transaction` for commits — and never touches Doctrine directly. Migrations use a Scafera-owned Schema API that generates platform-independent PHP, not raw SQL. A build-time compiler pass (`DoctrineBoundaryPass`) enforces these boundaries: Doctrine usage is allowed only inside `Entity/` (mapping attributes) and `Repository/` (queries), and forbidden everywhere else.
+
+### v1 Limitations
+
+The Schema API v1 supports creating/dropping tables and adding/dropping columns. The following features are **not yet supported** and will produce warnings during `db:migrate:diff` if detected in your entities:
+
+- **Indexes** (unique, composite) — use `db:migrate:create` to add them manually
+- **Foreign key constraints** — use `db:migrate:create` to add them manually
+- **Column modifications** (type changes, length changes) — throws an error; write a manual migration
+- **Column renames** — throws an error; write a manual migration
+- **Relationship mapping** (`ManyToOne`, `OneToMany`, `ManyToMany`, `OneToOne`, `JoinColumn`) — entities support scalar fields only in v1; relationships are planned for v2
+
+These are tracked for v1.2–v1.4+ in the Roadmap section below.
+
+## Installation
+
+```bash
+composer require scafera/database
+```
+
+The bundle is auto-discovered via Scafera's `symfony-bundle` type detection. No manual registration needed.
+
+## Requirements
+
+- PHP 8.4+
+- `scafera/kernel` ^1.0
+- A `DATABASE_URL` environment variable (set in `config/config.yaml` under `env:` or as an OS env var)
+
+## Runtime API
+
+### EntityStore
+
+The primary persistence interface. Inject it in repositories.
+
+```php
+use Scafera\Database\EntityStore;
+
+final class OrderRepository
+{
+    public function __construct(
+        private readonly EntityStore $entityStore,
+    ) {}
+
+    public function find(int $id): ?Order
+    {
+        return $this->entityStore->find(Order::class, $id);
+    }
+
+    public function save(Order $order): void
+    {
+        $this->entityStore->persist($order);
+    }
+
+    public function remove(Order $order): void
+    {
+        $this->entityStore->remove($order);
+    }
+}
+```
+
+### Transaction
+
+Wraps writes in an explicit transaction. All `persist()` and `remove()` calls must be committed through `Transaction::run()` — unflushed writes are detected and throw at the end of the request/command.
+
+```php
+use Scafera\Database\EntityStore;
+use Scafera\Database\Transaction;
+
+final class OrderService
+{
+    public function __construct(
+        private readonly EntityStore $entityStore,
+        private readonly Transaction $tx,
+    ) {}
+
+    public function placeOrder(array $data): Order
+    {
+        return $this->tx->run(function () use ($data): Order {
+            $order = new Order();
+            $order->setTotal($data['total']);
+            $this->entityStore->persist($order);
+
+            return $order;
+        });
+    }
+}
+```
+
+Nested `Transaction::run()` calls are safe — inner calls use database savepoints. Only the outermost level flushes and commits. If an inner call throws and the outer catches it, the inner changes are rolled back via savepoint while the outer transaction can still commit.
+
+### Entities
+
+Entities use Scafera mapping attributes from `Scafera\Database\Mapping\Field`. These map to Doctrine types internally but keep your entities free of Doctrine imports.
+
+```php
+use Scafera\Database\Mapping\Field;
+
+final class Order
+{
+    #[Field\Id]
+    private ?int $id = null;
+
+    #[Field\Decimal(precision: 10, scale: 2)]
+    private string $total;
+
+    public function __construct(
+        #[Field\Varchar]
+        private string $customerName,
+    ) {}
+}
+```
+
+Available field attributes: `Id`, `Varchar`, `VarcharShort`, `Text`, `Integer`, `IntegerBig`, `IntegerBigPositive`, `Boolean`, `Decimal`, `Money`, `Percentage`, `Date`, `DateTime`, `Time`, `UnixTimestamp`, `Json`, `Uuid`, `Column` (escape hatch for custom Doctrine types).
+
+For types not covered by the built-in attributes, use `Column` as an escape hatch:
+
+```php
+#[Field\Column(type: 'string', options: ['length' => 15])]
+private string $isoCode;
+```
+
+Use the `Auditable` trait for `createdAt`/`updatedAt` timestamp fields. You must initialize `$this->createdAt = new \DateTimeImmutable()` in your entity constructor — the `AuditableInitValidator` will warn if you forget.
+
+#### Table Names
+
+Table names are derived as singular snake_case from the class name: `Order` → `order`, `BlogPost` → `blog_post`. No pluralization is applied (see ADR-050). To override the default, use `#[Table]`:
+
+```php
+use Scafera\Database\Mapping\Field;
+use Scafera\Database\Mapping\Table;
+
+#[Table(name: 'categories')]
+final class Category
+{
+    #[Field\Id]
+    private ?int $id = null;
+}
+```
+
+### Repositories
+
+Repositories are the only zone where direct Doctrine usage is allowed. The `DoctrineBoundaryPass` enforces this at build time.
+
+| Zone | Doctrine Imports | Notes |
+|------|-----------------|-------|
+| `src/Entity/` | Forbidden | Use `Scafera\Database\Mapping\Field` attributes. Lifecycle callbacks detected and rejected. |
+| `src/Repository/` | Allowed | Controlled leakage — QueryBuilder, DQL, DBAL all permitted. |
+| Everywhere else | Forbidden | Except `Doctrine\Common\Collections` (data structure, not behavioral). |
+
+## Migrations
+
+Migration files live in `support/migrations/` and use the Scafera Schema API — zero Doctrine imports.
+
+### Schema API
+
+```php
+use Scafera\Database\Migration;
+use Scafera\Database\Schema\Schema;
+use Scafera\Database\Schema\Table;
+
+final class Version20260403080718 extends Migration
+{
+    public function up(Schema $schema): void
+    {
+        $schema->create('page', function (Table $table) {
+            $table->id();
+            $table->string('title', 255);
+            $table->string('slug', 255);
+            $table->text('content');
+            $table->boolean('published');
+            $table->timestamp('createdAt');
+        });
+    }
+
+    public function down(Schema $schema): void
+    {
+        $schema->drop('page');
+    }
+}
+```
+
+### Column Types (v1)
+
+| Method | Doctrine Type | Arguments |
+|--------|--------------|-----------|
+| `id()` | `integer` (auto-increment PK) | — |
+| `string($name, $length)` | `string` | length (default 255) |
+| `text($name)` | `text` | — |
+| `integer($name)` | `integer` | — |
+| `bigInteger($name)` | `bigint` | — |
+| `smallInteger($name)` | `smallint` | — |
+| `boolean($name)` | `boolean` | — |
+| `timestamp($name)` | `datetime_immutable` | — |
+| `date($name)` | `date_immutable` | — |
+| `decimal($name, $precision, $scale)` | `decimal` | precision (default 8), scale (default 2) |
+| `json($name)` | `json` | — |
+
+### Column Modifiers
+
+Column methods return a `ColumnBuilder`. Chain modifiers on it:
+
+```php
+$table->string('bio')->nullable();
+$table->boolean('active')->default(true);
+$table->string('notes')->nullable()->default('');
+```
+
+### Schema Operations
+
+```php
+// Create a table
+$schema->create('users', function (Table $table) { ... });
+
+// Drop a table (destructive)
+$schema->drop('users');
+
+// Modify an existing table
+$schema->modify('users', function (Table $table) {
+    $table->string('email', 255);       // add column
+    $table->dropColumn('legacy_field');  // drop column (destructive)
+});
+```
+
+### Destructive Detection
+
+Operations are classified as safe or destructive by type:
+
+| Operation | Destructive |
+|-----------|-------------|
+| `CreateTable` | No |
+| `AddColumn` | No |
+| `DropTable` | Yes |
+| `DropColumn` | Yes |
+
+`db:migrate` checks pending migrations before execution:
+- **Development** (`APP_ENV=dev`): warns about destructive operations, proceeds
+- **Production** (`APP_ENV=prod`): blocks execution unless `--force` is passed
+
+## CLI Commands
+
+All commands are available via `vendor/bin/scafera`:
+
+```bash
+# Generate a migration from entity changes
+vendor/bin/scafera db:migrate:diff
+
+# Create a blank migration for manual editing
+vendor/bin/scafera db:migrate:create
+
+# Generate a migration to drop a specific table
+vendor/bin/scafera db:migrate:drop orders
+
+# Run pending migrations
+vendor/bin/scafera db:migrate
+
+# Show migration status
+vendor/bin/scafera db:migrate:status
+
+# Rollback the last migration
+vendor/bin/scafera db:migrate:rollback
+
+# Drop all tables and re-run all migrations (requires --force)
+vendor/bin/scafera db:reset --force
+
+# Run seeders from support/seeds/
+vendor/bin/scafera db:seed
+
+# List all database tables with column/row counts
+vendor/bin/scafera db:schema:list
+
+# Show column definitions for a table
+vendor/bin/scafera db:schema:show orders
+
+# Show mismatches between entities and database
+vendor/bin/scafera db:schema:diff
+```
+
+### Seeding
+
+Seeders live in `support/seeds/` and are auto-discovered via the `scafera.seeder` tag:
+
+```php
+namespace App\Seed;
+
+use Scafera\Database\EntityStore;
+use Scafera\Database\SeederInterface;
+use Scafera\Database\Transaction;
+
+final class PageSeed implements SeederInterface
+{
+    public function __construct(
+        private readonly EntityStore $entityStore,
+        private readonly Transaction $transaction,
+    ) {}
+
+    public function run(): void
+    {
+        $this->transaction->run(function (): void {
+            $page = new \App\Entity\Page();
+            $page->setTitle('Welcome');
+            $page->setSlug('welcome');
+            $page->setContent('Hello world.');
+            $page->setPublished(true);
+            $this->entityStore->persist($page);
+        });
+    }
+}
+```
+
+## Configuration
+
+The bundle configures Doctrine defaults automatically:
+
+- **DBAL**: reads `DATABASE_URL` from env
+- **ORM**: maps `App\Entity` from `src/Entity/` with attribute mapping
+- **Migrations**: stores migration files in `support/migrations/` under the `App\Migrations` namespace
+
+To override Doctrine config, add a `doctrine:` section to `config/config.yaml`. Note: this leaks the engine name — a `database:` config key mapping is planned (see Roadmap).
+
+## Testing
+
+```bash
+# From the consumer project (e.g., milestone3)
+docker compose exec php vendor/bin/phpunit \
+  -c vendor/scafera/database/tests/phpunit.xml \
+  --bootstrap vendor/autoload.php \
+  --testdox
+```
+
+## Roadmap
+
+### v1.1 — Config Key Mapping
+
+Add a `database:` config key in `config/config.yaml` that maps to Doctrine config internally. Developers should not need to write `doctrine:` to customize database settings — it leaks the engine name and violates the boundary principle.
+
+### v1.2 — Schema API: Indexes
+
+Add index support to the Schema API:
+
+```php
+$table->index('email');                    // regular index
+$table->unique('slug');                    // unique index
+$table->index(['first_name', 'last_name']); // composite index
+```
+
+New operation type: `AddIndex implements Operation` (non-destructive). `DropIndex` (destructive). `db:migrate:diff` will generate index operations instead of emitting warnings.
+
+### v1.3 — Schema API: Foreign Keys
+
+Add foreign key support:
+
+```php
+$table->foreignKey('user_id', 'users', 'id');
+$table->foreignKey('category_id', 'categories', 'id')->onDelete('cascade');
+```
+
+New operation types: `AddForeignKey`, `DropForeignKey`.
+
+### v1.4 — Schema API: Column Modifications and Renames
+
+Support modifying existing columns and renaming:
+
+```php
+$schema->modify('users', function (Table $table) {
+    $table->renameColumn('name', 'full_name');
+    $table->changeColumn('email', 'string', 500); // change length
+});
+```
+
+New operation types: `ModifyColumn`, `RenameColumn`. Currently throws `UnsupportedOperationException` — this removes that limitation.
+
+### v2.0 — Relationship Mapping
+
+Add relationship attributes to `ScaferaMappingDriver`: `#[ManyToOne]`, `#[OneToMany]`, `#[ManyToMany]`, `#[OneToOne]`, `#[JoinColumn]`. Until then, entities support scalar fields only.
+
+### v2.1 — Runtime Query Builder
+
+A Scafera-owned query API for repositories, replacing direct Doctrine `EntityRepository` usage. This would close the last boundary gap — repositories currently use Doctrine's query interface directly (allowed by the boundary pass, but not ideal).

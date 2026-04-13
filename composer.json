@@ -3,9 +3,15 @@
     "description": "Database persistence for the Scafera framework",
     "type": "symfony-bundle",
     "license": "MIT",
+    "keywords": ["database", "doctrine", "orm", "scafera", "persistence", "php"],
+    "homepage": "https://github.com/scafera/database",
+    "support": {
+        "issues": "https://github.com/scafera/database/issues",
+        "source": "https://github.com/scafera/database"
+    },
     "require": {
         "php": ">=8.4",
-        "scafera/kernel": "^1.0 || dev-main",
+        "scafera/kernel": "^1.0",
         "doctrine/doctrine-bundle": "^3.0",
         "doctrine/orm": "^3.0",
         "doctrine/doctrine-migrations-bundle": "^4.0"

@@ -105,20 +105,17 @@ final class ScaferaDatabaseBundle extends AbstractBundle
             ->set(Migration\MigrationFactory::class)
                 ->autowire();
 
-        // Mapping driver (used by schema inspection commands)
+        // Mapping driver + schema inspector (only when entities are configured)
         if ($builder->hasParameter('scafera.entity_dir')) {
             $container->services()
                 ->set(Mapping\ScaferaMappingDriver::class)
                     ->args([
                         '%scafera.entity_dir%',
                         '%scafera.entity_namespace%',
-                    ]);
+                    ])
+                ->set(Schema\SchemaDiffInspector::class)
+                    ->autowire();
         }
-
-        // Schema diff inspector (used by diff command and validator)
-        $container->services()
-            ->set(Schema\SchemaDiffInspector::class)
-                ->autowire();
 
         // Database CLI commands
         $container->services()

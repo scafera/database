@@ -70,9 +70,6 @@ final class ScaferaDatabaseBundle extends AbstractBundle
                 ->tag('kernel.event_subscriber')
             ->set(Validator\DatabaseUrlValidator::class)
                 ->tag('scafera.validator')
-            ->set(Validator\SchemaDriftValidator::class)
-                ->autowire()
-                ->tag('scafera.validator')
             ->set(Validator\AuditableInitValidator::class)
                 ->tag('scafera.validator')
             ->set(Validator\RepositoryDisciplineValidator::class)
@@ -105,7 +102,7 @@ final class ScaferaDatabaseBundle extends AbstractBundle
             ->set(Migration\MigrationFactory::class)
                 ->autowire();
 
-        // Mapping driver + schema inspector (only when entities are configured)
+        // Entity-dependent services (only when architecture declares entity mapping)
         if ($builder->hasParameter('scafera.entity_dir')) {
             $container->services()
                 ->set(Mapping\ScaferaMappingDriver::class)
@@ -114,7 +111,13 @@ final class ScaferaDatabaseBundle extends AbstractBundle
                         '%scafera.entity_namespace%',
                     ])
                 ->set(Schema\SchemaDiffInspector::class)
-                    ->autowire();
+                    ->autowire()
+                ->set(Validator\SchemaDriftValidator::class)
+                    ->autowire()
+                    ->tag('scafera.validator')
+                ->set(Command\SchemaDiffCommand::class)
+                    ->autowire()
+                    ->tag('console.command');
         }
 
         // Database CLI commands
@@ -150,9 +153,7 @@ final class ScaferaDatabaseBundle extends AbstractBundle
             ->set(Command\SchemaShowCommand::class)
                 ->autowire()
                 ->tag('console.command')
-            ->set(Command\SchemaDiffCommand::class)
-                ->autowire()
-                ->tag('console.command');
+            ;
     }
 
     public function build(ContainerBuilder $container): void

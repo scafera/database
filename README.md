@@ -2,21 +2,12 @@
 
 Database persistence for the Scafera framework. Wraps Doctrine ORM/DBAL internally — userland code never imports Doctrine types outside of entities and repositories.
 
+This is a **capability package**. It adds optional persistence to a Scafera project. It does not define folder structure or architectural rules — those belong to architecture packages.
+
 ## Core Idea
 
 Scafera treats the database engine as an implementation detail. Your application code interacts with two classes — `EntityStore` for reads and writes, `Transaction` for commits — and never touches Doctrine directly. Migrations use a Scafera-owned Schema API that generates platform-independent PHP, not raw SQL. A build-time compiler pass (`DoctrineBoundaryPass`) enforces these boundaries: Doctrine usage is allowed only inside `Entity/` (mapping attributes) and `Repository/` (queries), and forbidden everywhere else.
 
-### v1 Limitations
-
-The Schema API v1 supports creating/dropping tables and adding/dropping columns. The following features are **not yet supported** and will produce warnings during `db:migrate:diff` if detected in your entities:
-
-- **Indexes** (unique, composite) — use `db:migrate:create` to add them manually
-- **Foreign key constraints** — use `db:migrate:create` to add them manually
-- **Column modifications** (type changes, length changes) — throws an error; write a manual migration
-- **Column renames** — throws an error; write a manual migration
-- **Relationship mapping** (`ManyToOne`, `OneToMany`, `ManyToMany`, `OneToOne`, `JoinColumn`) — entities support scalar fields only in v1; relationships are planned for v2
-
-These are tracked for v1.2–v1.4+ in the Roadmap section below.
 
 ## Installation
 
@@ -227,6 +218,13 @@ $schema->modify('users', function (Table $table) {
 });
 ```
 
+### Planned Schema Enhancements
+
+The following operations are planned as future additions to the Schema API:
+
+- Indexes (regular, unique, composite)
+- Foreign key constraints
+
 ### Destructive Detection
 
 Operations are classified as safe or destructive by type:
@@ -323,62 +321,6 @@ The bundle configures Doctrine defaults automatically:
 
 To override Doctrine config, add a `doctrine:` section to `config/config.yaml`. Note: this leaks the engine name — a `database:` config key mapping is planned (see Roadmap).
 
-## Testing
+## License
 
-```bash
-# From the consumer project (e.g., milestone3)
-docker compose exec php vendor/bin/phpunit \
-  -c vendor/scafera/database/tests/phpunit.xml \
-  --bootstrap vendor/autoload.php \
-  --testdox
-```
-
-## Roadmap
-
-### v1.1 — Config Key Mapping
-
-Add a `database:` config key in `config/config.yaml` that maps to Doctrine config internally. Developers should not need to write `doctrine:` to customize database settings — it leaks the engine name and violates the boundary principle.
-
-### v1.2 — Schema API: Indexes
-
-Add index support to the Schema API:
-
-```php
-$table->index('email');                    // regular index
-$table->unique('slug');                    // unique index
-$table->index(['first_name', 'last_name']); // composite index
-```
-
-New operation type: `AddIndex implements Operation` (non-destructive). `DropIndex` (destructive). `db:migrate:diff` will generate index operations instead of emitting warnings.
-
-### v1.3 — Schema API: Foreign Keys
-
-Add foreign key support:
-
-```php
-$table->foreignKey('user_id', 'users', 'id');
-$table->foreignKey('category_id', 'categories', 'id')->onDelete('cascade');
-```
-
-New operation types: `AddForeignKey`, `DropForeignKey`.
-
-### v1.4 — Schema API: Column Modifications and Renames
-
-Support modifying existing columns and renaming:
-
-```php
-$schema->modify('users', function (Table $table) {
-    $table->renameColumn('name', 'full_name');
-    $table->changeColumn('email', 'string', 500); // change length
-});
-```
-
-New operation types: `ModifyColumn`, `RenameColumn`. Currently throws `UnsupportedOperationException` — this removes that limitation.
-
-### v2.0 — Relationship Mapping
-
-Add relationship attributes to `ScaferaMappingDriver`: `#[ManyToOne]`, `#[OneToMany]`, `#[ManyToMany]`, `#[OneToOne]`, `#[JoinColumn]`. Until then, entities support scalar fields only.
-
-### v2.1 — Runtime Query Builder
-
-A Scafera-owned query API for repositories, replacing direct Doctrine `EntityRepository` usage. This would close the last boundary gap — repositories currently use Doctrine's query interface directly (allowed by the boundary pass, but not ideal).
+MIT

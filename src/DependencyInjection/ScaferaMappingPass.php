@@ -19,11 +19,21 @@ final class ScaferaMappingPass implements CompilerPassInterface
             return;
         }
 
+        if (!$container->hasParameter('scafera.entity_dir')) {
+            return;
+        }
+
+        $entityDir = $container->getParameter('scafera.entity_dir');
+
+        if (!is_dir($entityDir)) {
+            return;
+        }
+
         $def = $container->getDefinition($driverId);
         $def->setClass(ScaferaMappingDriver::class);
         $def->setArguments([
-            '%kernel.project_dir%/src/Entity',
-            'App\\Entity',
+            $entityDir,
+            $container->getParameter('scafera.entity_namespace'),
         ]);
     }
 }

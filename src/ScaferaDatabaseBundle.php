@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Scafera\Database;
 
+use Scafera\Kernel\InstalledPackages;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
@@ -14,22 +15,35 @@ final class ScaferaDatabaseBundle extends AbstractBundle
 {
     public function prependExtension(ContainerConfigurator $container, ContainerBuilder $builder): void
     {
+        $projectDir = $builder->getParameter('kernel.project_dir');
+        $entityMapping = InstalledPackages::resolveArchitecture($projectDir)?->getEntityMapping();
+
+        $ormConfig = ['auto_mapping' => false];
+
+        if ($entityMapping !== null) {
+            $absoluteDir = $projectDir . '/' . $entityMapping['dir'];
+
+            if (is_dir($absoluteDir)) {
+                $builder->setParameter('scafera.entity_dir', $absoluteDir);
+                $builder->setParameter('scafera.entity_namespace', $entityMapping['namespace']);
+
+                $ormConfig['mappings'] = [
+                    'App' => [
+                        'type' => 'attribute',
+                        'is_bundle' => false,
+                        'dir' => $absoluteDir,
+                        'prefix' => $entityMapping['namespace'],
+                        'alias' => 'App',
+                    ],
+                ];
+            }
+        }
+
         $builder->prependExtensionConfig('doctrine', [
             'dbal' => [
                 'url' => '%env(DATABASE_URL)%',
             ],
-            'orm' => [
-                'auto_mapping' => false,
-                'mappings' => [
-                    'App' => [
-                        'type' => 'attribute',
-                        'is_bundle' => false,
-                        'dir' => '%kernel.project_dir%/src/Entity',
-                        'prefix' => 'App\Entity',
-                        'alias' => 'App',
-                    ],
-                ],
-            ],
+            'orm' => $ormConfig,
         ]);
 
         $builder->prependExtensionConfig('doctrine_migrations', [
@@ -92,12 +106,14 @@ final class ScaferaDatabaseBundle extends AbstractBundle
                 ->autowire();
 
         // Mapping driver (used by schema inspection commands)
-        $container->services()
-            ->set(Mapping\ScaferaMappingDriver::class)
-                ->args([
-                    '%kernel.project_dir%/src/Entity',
-                    'App\\Entity',
-                ]);
+        if ($builder->hasParameter('scafera.entity_dir')) {
+            $container->services()
+                ->set(Mapping\ScaferaMappingDriver::class)
+                    ->args([
+                        '%scafera.entity_dir%',
+                        '%scafera.entity_namespace%',
+                    ]);
+        }
 
         // Schema diff inspector (used by diff command and validator)
         $container->services()

@@ -6,6 +6,7 @@ namespace Scafera\Database\Validator;
 
 use Scafera\Database\Mapping\Auditable;
 use Scafera\Kernel\Contract\ValidatorInterface;
+use Scafera\Kernel\InstalledPackages;
 use Scafera\Kernel\Tool\FileFinder;
 
 final class AuditableInitValidator implements ValidatorInterface
@@ -17,7 +18,14 @@ final class AuditableInitValidator implements ValidatorInterface
 
     public function validate(string $projectDir): array
     {
-        $entityDir = $projectDir . '/src/Entity';
+        $architecture = InstalledPackages::resolveArchitecture($projectDir);
+        $entityMapping = $architecture?->getEntityMapping();
+
+        if ($entityMapping === null) {
+            return [];
+        }
+
+        $entityDir = $projectDir . '/' . $entityMapping['dir'];
 
         if (!is_dir($entityDir)) {
             return [];

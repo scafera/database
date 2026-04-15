@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Scafera\Database\DependencyInjection;
 
+use Scafera\Kernel\InstalledPackages;
 use Scafera\Kernel\Tool\FileFinder;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -22,7 +23,10 @@ final class DoctrineBoundaryPass implements CompilerPassInterface
     public function process(ContainerBuilder $container): void
     {
         $projectDir = $container->getParameter('kernel.project_dir');
-        $srcDir = $projectDir . '/src';
+        $architecture = InstalledPackages::resolveArchitecture($projectDir);
+        $srcDir = $architecture !== null
+            ? $projectDir . '/' . rtrim($architecture->getServiceDiscovery($projectDir)['resource'], '/')
+            : $projectDir . '/src';
 
         if (!is_dir($srcDir)) {
             return;

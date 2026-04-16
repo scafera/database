@@ -25,6 +25,11 @@ final class RepositoryDisciplineValidator implements ValidatorInterface
         '/->getConnection\s*\(/' => 'accesses the raw DBAL connection — prefer query methods on EntityManager for reads',
     ];
 
+    public function getId(): string
+    {
+        return 'database.repository-discipline';
+    }
+
     public function getName(): string
     {
         return 'Repository discipline';

@@ -9,6 +9,11 @@ use Scafera\Kernel\Tool\FileFinder;
 
 final class SeederNamingValidator implements ValidatorInterface
 {
+    public function getId(): string
+    {
+        return 'database.seeder-naming';
+    }
+
     public function getName(): string
     {
         return 'Seed naming';

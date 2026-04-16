@@ -11,6 +11,11 @@ use Scafera\Kernel\Tool\FileFinder;
 
 final class AuditableInitValidator implements ValidatorInterface
 {
+    public function getId(): string
+    {
+        return 'database.auditable-init';
+    }
+
     public function getName(): string
     {
         return 'Auditable initialization';

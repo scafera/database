@@ -8,6 +8,11 @@ use Scafera\Kernel\Contract\ValidatorInterface;
 
 final class DatabaseUrlValidator implements ValidatorInterface
 {
+    public function getId(): string
+    {
+        return 'database.database-url';
+    }
+
     public function getName(): string
     {
         return 'DATABASE_URL defined';

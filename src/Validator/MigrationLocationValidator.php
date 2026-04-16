@@ -9,6 +9,11 @@ use Scafera\Kernel\Tool\FileFinder;
 
 final class MigrationLocationValidator implements ValidatorInterface
 {
+    public function getId(): string
+    {
+        return 'database.migration-location';
+    }
+
     public function getName(): string
     {
         return 'Migration location';

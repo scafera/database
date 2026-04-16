@@ -14,6 +14,11 @@ final class SchemaDriftValidator implements ValidatorInterface
     ) {
     }
 
+    public function getId(): string
+    {
+        return 'database.schema-drift';
+    }
+
     public function getName(): string
     {
         return 'Database schema sync';

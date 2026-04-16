@@ -25,7 +25,7 @@ final class SeedCommand extends Command
 
     protected function configure(): void
     {
-        $this->addArg('seeder', 'Specific seeder class name to run (e.g. PageSeeder)', required: false);
+        $this->addArg('seeder', 'Specific seeder class name to run (e.g. PageSeed)', required: false);
     }
 
     protected function handle(Input $input, Output $output): int

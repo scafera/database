@@ -76,6 +76,8 @@ final class ScaferaDatabaseBundle extends AbstractBundle
                 ->tag('scafera.validator')
             ->set(Validator\SeederNamingValidator::class)
                 ->tag('scafera.validator')
+            ->set(Validator\MigrationLocationValidator::class)
+                ->tag('scafera.validator')
 
             ;
 

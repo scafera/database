@@ -2,12 +2,20 @@
 
 Database persistence for the Scafera framework. Wraps Doctrine ORM/DBAL internally — userland code never imports Doctrine types outside of entities and repositories.
 
+> **Provides:** Database persistence for Scafera — `EntityStore` (read/write), `Transaction` (savepoint-based nesting; unflushed writes throw at end-of-request), Scafera-owned mapping attributes under `Scafera\Database\Mapping\Field\*`, and a Doctrine-free Schema API for migrations. Doctrine ORM/DBAL is wrapped internally.
+>
+> **Depends on:** A Scafera host project with a `DATABASE_URL` env var (set in `config/config.yaml` under `env:` or as OS env), entities in `src/Entity/`, repositories in `src/Repository/`, migrations in `support/migrations/`, and seeders in `support/seeds/`.
+>
+> **Extension points:**
+> - Contract — `SeederInterface` (auto-tagged `scafera.seeder`, collected by `db:seed`)
+> - Migrations — extend `Scafera\Database\Migration`; `up()` / `down()` use the Schema API (`Schema::create` / `modify` / `drop`, chainable column modifiers, no Doctrine imports)
+> - Mapping attributes — 18 field types under `Scafera\Database\Mapping\Field\*` (`Id`, `Varchar`, `Text`, `Integer`, `Decimal`, `Money`, `DateTime`, `Json`, `Uuid`, … plus `Column` as an escape hatch for custom Doctrine types); `#[Table]` for table-name override; `Auditable` trait for `createdAt` / `updatedAt`
+> - Controlled zones — `src/Entity/` forbids Doctrine imports (Scafera mapping only); `src/Repository/` allows Doctrine QueryBuilder / DQL / DBAL
+> - Config — override via `doctrine:` in `config/config.yaml` (note: engine name leaks; future `database:` key planned)
+>
+> **Not responsible for:** Doctrine imports outside `src/Entity/` and `src/Repository/` (blocked by `DoctrineBoundaryPass`) · lifecycle callbacks on entities (detected and rejected) · table-name pluralization (singular snake_case per ADR-050) · engine abstraction in config (`doctrine:` key leaks engine name; mapping to `database:` planned) · test fixtures beyond seeders.
+
 This is a **capability package**. It adds optional persistence to a Scafera project. It does not define folder structure or architectural rules — those belong to architecture packages.
-
-## Core Idea
-
-Scafera treats the database engine as an implementation detail. Your application code interacts with two classes — `EntityStore` for reads and writes, `Transaction` for commits — and never touches Doctrine directly. Migrations use a Scafera-owned Schema API that generates platform-independent PHP, not raw SQL. A build-time compiler pass (`DoctrineBoundaryPass`) enforces these boundaries: Doctrine usage is allowed only inside `Entity/` (mapping attributes) and `Repository/` (queries), and forbidden everywhere else.
-
 
 ## Installation
 
